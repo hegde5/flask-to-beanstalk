@@ -1,0 +1,67 @@
+name: Deploy All Environments
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        required: true
+        description: 🚨 Danger Zone Alert! 🚨 By clicking the check mark, you acknowledge that you intend to completely destroy ALL Elastic Beanstalk environments created by Terraform from this repository. Proceed with caution!
+        type: boolean
+        default: false
+
+jobs:
+  destroy-environment:
+    name: Destroy
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == true && github.ref == 'refs/heads/main'
+    env:
+      APPLICATION_NAME: "flask-app"  # Needs to be the same name as `app_name` defined in the tfvar
+      ENVIRONMENT_NAME: "flask-app-development"  # Format is: `app_name-environment`. Both these vars are defined in tfvar
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: 1.9.8
+
+    - name: Find Environment Files
+      id: find_envs
+      run: |
+        echo "Finding all .tfvars files in terraform/envs directory..."
+        ENV_FILES=$(find terraform/envs -type f -name '*.tfvars' -exec basename {} \;)
+        echo "Found environment files:"
+        echo "$ENV_FILES"
+        echo "ENV_FILES=$ENV_FILES" >> $GITHUB_ENV
+
+    - name: Destroy All Environments
+      working-directory: terraform
+      env:
+        ENV_FILES: ${{ env.ENV_FILES }}
+      run: |
+        terraform init
+
+        echo "Processing environment files..."
+        for ENV_FILE in $ENV_FILES; do
+          echo "Environment file: $ENV_FILE"
+
+          # Extract environment name
+          ENV_NAME=$(basename "$ENV_FILE" .tfvars)
+          echo "Deploying environment: $ENV_NAME"
+
+          # Select or create workspace
+          terraform workspace select "$ENV_NAME" || terraform workspace new "$ENV_NAME"
+
+          # Validate, plan, and apply
+          terraform validate
+          terraform destroy -auto-approve -var-file="envs/$ENV_FILE"
+
+        done
