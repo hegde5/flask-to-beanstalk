@@ -54,8 +54,3 @@ resource "aws_iam_role_policy_attachment" "beanstalk_role_policy" {
   role       = aws_iam_role.beanstalk_role.name
   policy_arn = "arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier"
 }
-
-# resource "aws_s3_bucket" "app_bucket" {
-#   bucket = "${var.environment}-${var.app_name}-bucket"
-#   tags   = var.tags
-# }

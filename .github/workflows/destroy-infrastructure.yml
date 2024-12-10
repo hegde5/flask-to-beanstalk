@@ -1,16 +1,20 @@
 name: Deploy All Environments
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      confirm:
+        required: true
+        description: 🚨 Danger Zone Alert! 🚨 By clicking the check mark, you acknowledge that you intend to completely destroy ALL Elastic Beanstalk environments created by Terraform from this repository. Proceed with caution!
+        type: boolean
+        default: false
 
 jobs:
-  deploy-beanstalk:
-    name: Deploy All Environments
+  destroy-environment:
+    name: Destroy
     runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == true && github.ref == 'refs/heads/main'
     env:
-      DEPLOY_PACKAGE_NAME: "flask-app-${{ github.sha }}.zip"
       APPLICATION_NAME: "flask-app"  # Needs to be the same name as `app_name` defined in the tfvar
       ENVIRONMENT_NAME: "flask-app-development"  # Format is: `app_name-environment`. Both these vars are defined in tfvar
     steps:
@@ -38,7 +42,7 @@ jobs:
         echo "$ENV_FILES"
         echo "ENV_FILES=$ENV_FILES" >> $GITHUB_ENV
 
-    - name: Deploy All Environments
+    - name: Destroy All Environments
       working-directory: terraform
       env:
         ENV_FILES: ${{ env.ENV_FILES }}
@@ -58,25 +62,6 @@ jobs:
 
           # Validate, plan, and apply
           terraform validate
-          terraform plan -var-file="envs/$ENV_FILE"
-          terraform apply -auto-approve -var-file="envs/$ENV_FILE"
+          terraform destroy -auto-approve -var-file="envs/$ENV_FILE"
 
         done
-
-    - name: Zip deployment package
-      run: |
-        zip -r ${{ env.DEPLOY_PACKAGE_NAME }} . -x terraform\* *.git*
-        ls
-
-    - name: Deploy
-      uses: einaregilsson/beanstalk-deploy@v22
-      with:
-        aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        application_name: ${{ env.APPLICATION_NAME }}
-        environment_name: ${{ env.ENVIRONMENT_NAME }}
-        deployment_package: ${{ env.DEPLOY_PACKAGE_NAME }}
-        region: ${{ secrets.AWS_DEFAULT_REGION }}
-        version_label: ${{ github.sha }}
-        use_existing_version_if_available: True
-        wait_for_deployment: True
